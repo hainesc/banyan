@@ -1,12 +1,63 @@
 package memory
 import (
+	"fmt"
+	"strings"
+	"github.com/hainesc/banyan/pkg/auth"
 	"github.com/hainesc/banyan/pkg/store"
 )
 type Memory struct {
+	password map[string]auth.Password
 }
 
 func NewMemory() *Memory {
-	return &Memory{}
+	return &Memory{
+		password: make(map[string]auth.Password),
+	}
 }
 // Memory implements the Store interface
 var _ store.Store = &Memory{}
+
+func (m *Memory) SignUp(form auth.SignUpForm, hash []byte, groups []string) error {
+	// TODO: email check, smtp
+	// smtp.partner.outlook.cn
+	// 587
+	// STARTTLS
+	if _, ok := m.password[form.UserName]; ok {
+		return fmt.Errorf("User name exists")
+	}
+
+	parts := strings.Split(form.Email, "@")
+	if len(parts) != 2 {
+		return fmt.Errorf("Email format error")
+	}
+
+	if parts[1] != "daocloud.io" {
+		return fmt.Errorf("Use daocloud.io email only")
+	}
+	m.password[form.UserName] = auth.Password{
+		Email: form.Email,
+		Hash: hash,
+		Groups: groups,
+	}
+	return nil
+}
+
+func (m *Memory) GetHash(user string) ([]byte, error) {
+	if _, ok := m.password[user]; !ok {
+		return nil, fmt.Errorf("User not found")
+	}
+
+	return m.password[user].Hash, nil
+}
+
+func (m *Memory) SignIn() error {
+	return nil
+}
+
+func (m *Memory) GetPassword(user string) (*auth.Password, error) {
+	if _, ok := m.password[user]; !ok {
+		return nil, fmt.Errorf("User not found")
+	}
+	ret := m.password[user]
+	return &ret, nil
+}

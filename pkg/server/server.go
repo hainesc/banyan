@@ -2,11 +2,14 @@ package server
 
 import (
 	"context"
+	"crypto/rsa"
 	"net/http"
+
 	"github.com/hainesc/banyan/pkg/config"
 	"github.com/hainesc/banyan/pkg/handler"
 	"github.com/hainesc/banyan/pkg/store"
 	"github.com/hainesc/banyan/pkg/store/memory"
+	"gopkg.in/square/go-jose.v2"
 )
 
 type Server struct {
@@ -20,8 +23,29 @@ func NewServer(ctx context.Context, c *config.BanyanConf) (*Server, error) {
 	}, nil
 }
 
+func SigningKeyGenerator() (priv *jose.JSONWebKey, pub *jose.JSONWebKey) {
+	tmp, _ := store.RS256.Generator()
+	key := tmp.(*rsa.PrivateKey)
+	priv = &jose.JSONWebKey{
+		Key: key,
+		KeyID: "1",
+		Algorithm: "RS256",
+		Use: "sig",
+	}
+	pub = &jose.JSONWebKey{
+		Key: key.Public(),
+		KeyID: "1",
+		Algorithm: "RS256",
+		Use: "sig",
+	}
+	return
+}
+
 func (s *Server) Serve() error {
-	banyan := handler.NewBanyanHandler(s.store)
-	http.HandleFunc("/", banyan.HandleTODO)
+	SigningKey, SigningKeyPub := SigningKeyGenerator()
+	banyan := handler.NewBanyanHandler(s.store, SigningKey, SigningKeyPub)
+	http.Handle("/", http.FileServer(http.Dir("./acorn")))
+	http.HandleFunc("/api/signup", banyan.HandleSignUp)
+	http.HandleFunc("/api/signin", banyan.HandleSignIn)
 	return http.ListenAndServe(":8090", nil)
 }
