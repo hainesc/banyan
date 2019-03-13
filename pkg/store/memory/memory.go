@@ -7,11 +7,13 @@ import (
 )
 type Memory struct {
 	password map[string]auth.Password
+	teams map[string]store.Team
 }
 
 func NewMemory() *Memory {
 	return &Memory{
 		password: make(map[string]auth.Password),
+		teams: make(map[string]store.Team),
 	}
 }
 // Memory implements the Store interface
@@ -60,4 +62,17 @@ func (m *Memory) GetPassword(user string) (*auth.Password, error) {
 	}
 	ret := m.password[user]
 	return &ret, nil
+}
+
+func (m *Memory) GetTeams(user string, group string) ([]store.Team, error) {
+	var result []store.Team
+	for _, v := range m.teams {
+		result = append(result, v)
+	}
+	return result, nil
+}
+
+func (m *Memory) AddTeam(team store.Team) error {
+	m.teams[team.Name] = team
+	return nil
 }

@@ -47,5 +47,6 @@ func (s *Server) Serve() error {
 	http.Handle("/", http.FileServer(http.Dir("./acorn")))
 	http.HandleFunc("/api/signup", banyan.HandleSignUp)
 	http.HandleFunc("/api/signin", banyan.HandleSignIn)
+	http.Handle("/api/teams", banyan.Auth(banyan.HandleTeams))
 	return http.ListenAndServe(":8090", nil)
 }
