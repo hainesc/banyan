@@ -7,6 +7,7 @@ import (
 
 	"github.com/hainesc/banyan/pkg/config"
 	"github.com/hainesc/banyan/pkg/handler"
+	"github.com/hainesc/banyan/pkg/mail"
 	"github.com/hainesc/banyan/pkg/store"
 	"github.com/hainesc/banyan/pkg/store/memory"
 	"gopkg.in/square/go-jose.v2"
@@ -43,10 +44,14 @@ func SigningKeyGenerator() (priv *jose.JSONWebKey, pub *jose.JSONWebKey) {
 
 func (s *Server) Serve() error {
 	SigningKey, SigningKeyPub := SigningKeyGenerator()
-	banyan := handler.NewBanyanHandler(s.store, SigningKey, SigningKeyPub)
-	http.Handle("/", http.FileServer(http.Dir("./acorn")))
+	// TODO: change them to the real ones.
+	sender, _ := mail.NewSender("smtp.example.com", "587", "sender@example.com", "Password-here")
+	banyan := handler.NewBanyanHandler(s.store, SigningKey, SigningKeyPub, sender)
+	http.Handle("/", http.FileServer(http.Dir("./magpie")))
 	http.HandleFunc("/api/signup", banyan.HandleSignUp)
 	http.HandleFunc("/api/signin", banyan.HandleSignIn)
+	http.HandleFunc("/api/confirm", banyan.HandleConfirm)
 	http.Handle("/api/teams", banyan.Auth(banyan.HandleTeams))
+	// TODO: https, it is very simple.
 	return http.ListenAndServe(":8090", nil)
 }

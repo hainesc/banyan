@@ -12,14 +12,15 @@ type SignInForm struct {
 }
 
 type Password struct {
-	Email string
-	Hash []byte
-	Groups []string
+	Email          string
+	EmailVerified  *bool
+	Hash           []byte
+	Groups         []string
 }
 
 type Claims struct {
 	Expiry         int64    `json:"exp"`
-	IssuedAt       int64    `json:"iat"`
+	IssuedAt       int64    `json:"iat,omitempty"`
 	Nonce          string   `json:"nonce,omitempty"`
 	Email          string   `json:"email,omitempty"`
 	EmailVerified  *bool    `json:"email_verified,omitempty"`

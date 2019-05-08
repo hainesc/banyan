@@ -6,12 +6,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
+	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"time"
 	"golang.org/x/crypto/bcrypt"
 	"github.com/hainesc/banyan/pkg/store"
 	"github.com/hainesc/banyan/pkg/auth"
+	"github.com/hainesc/banyan/pkg/mail"
 	jose "gopkg.in/square/go-jose.v2"
 )
 
@@ -19,13 +22,15 @@ type BanyanHandler struct {
 	store store.Store
 	priv *jose.JSONWebKey
 	pub *jose.JSONWebKey
+	sender *mail.Sender
 }
 
-func NewBanyanHandler(store store.Store, priv *jose.JSONWebKey, pub *jose.JSONWebKey) *BanyanHandler {
+func NewBanyanHandler(store store.Store, priv *jose.JSONWebKey, pub *jose.JSONWebKey, sender *mail.Sender) *BanyanHandler {
 	return &BanyanHandler{
 		store: store,
 		priv: priv,
 		pub: pub,
+		sender: sender,
 	}
 }
 
@@ -36,16 +41,16 @@ const (
 )
 
 var (
+	empty = struct{}{}
 	HRs = map[string]struct{}{
-		"yunhai.chen@daocloud.io": struct{}{},
-		"hr@daocloud.io": struct{}{},
+		"hr@example.com": empty,
 	}
 	Managers = map[string]struct{}{
-		"hongbing.zhang@daocloud.io": struct{}{},
-		"manager@daocloud.io": struct{}{},
+		"manager@example.com": empty,
 	}
 )
 
+// TODO: mail a token to the register.
 func (b *BanyanHandler) HandleSignUp(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -61,16 +66,10 @@ func (b *BanyanHandler) HandleSignUp(w http.ResponseWriter, r *http.Request) {
 
 		hash, err := bcrypt.GenerateFromPassword([]byte(form.Password), bcrypt.DefaultCost)
 		if err != nil {
+			// TODO: maybe an internal error is better.
 			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		}
 		fmt.Println(string(hash))
-		// Comparing the password with the hash
-		err = bcrypt.CompareHashAndPassword(hash, []byte(form.Password))
-
-		if (err != nil) {
-			fmt.Println("Compare hash value")
-			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
-		}
 
 		groups := []string{StaffGroup}
 		if _, ok := HRs[form.Email]; ok {
@@ -85,6 +84,27 @@ func (b *BanyanHandler) HandleSignUp(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			// TODO: error v2, CausedBy
 			fmt.Println("Write store error")
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		}
+		// Send a mail URL with JWT attached to the mail box of the register.
+		// It is safe to use jwt as confrim message since no one can guess it,
+		// it is attached with a signature, and on server side, no store needed.
+		expiry := time.Now().Add(time.Hour * 24)  // Only valid in 24 hours
+		claims := auth.Claims{
+			Name: form.UserName,
+			Email: form.Email,
+			Expiry: expiry.Unix(),
+		}
+		payload, _ := json.Marshal(claims)
+		signer, _ := jose.NewSigner(jose.SigningKey{Key: b.priv, Algorithm: jose.RS256}, &jose.SignerOptions{})
+
+		signature, _ := signer.Sign(payload)
+		code, _ := signature.CompactSerialize()
+
+		confirm, _ := url.Parse(r.Host)
+		confirm.Path = path.Join(confirm.Path, "api/confirm", code)
+		err = b.sender.Send([]string{form.Email}, "Confirm your Email", []byte(confirm.String()))
+		if err != nil {
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		}
 	}
@@ -145,6 +165,27 @@ func (b *BanyanHandler) HandleSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (b *BanyanHandler) HandleConfirm(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		// http://www.banyan.com/api/confirm/jwt-header.jwt.payload.jwt-signature
+		token := strings.TrimPrefix(r.URL.Path, "/api/confirm/")
+		user, _, err := b.VerifyJWT(token)
+		if err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+			return
+		}
+
+		if err = b.store.SetMailVerified(user); err != nil {
+			http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		}
+		fmt.Println(token)
+	default:
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+	}
+
+}
+
 func (b *BanyanHandler) Auth(next func(http.ResponseWriter, *http.Request, string, string)) http.Handler {
 	// func (b *BanyanHandler) HandleSignIn(w http.ResponseWriter, r *http.Request) {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -189,6 +230,9 @@ func (b *BanyanHandler) VerifyJWT(token string) (string, string, error) {
 		return "", "", fmt.Errorf("token is expired")
 	}
 
+	if !*claims.EmailVerified {
+		return "", "", fmt.Errorf("email not verified")
+	}
 	p, err := jws.Verify(b.pub)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to verify the token: %v", err)

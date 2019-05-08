@@ -36,10 +36,12 @@ func (m *Memory) SignUp(form auth.SignUpForm, hash []byte, groups []string) erro
 	if parts[1] != "daocloud.io" {
 		return fmt.Errorf("Use daocloud.io email only")
 	}
+	emailVerified := false
 	m.password[form.UserName] = auth.Password{
-		Email: form.Email,
-		Hash: hash,
-		Groups: groups,
+		Email:          form.Email,
+		EmailVerified:  &emailVerified,
+		Hash:           hash,
+		Groups:         groups,
 	}
 	return nil
 }
@@ -74,5 +76,13 @@ func (m *Memory) GetTeams(user string, group string) ([]store.Team, error) {
 
 func (m *Memory) AddTeam(team store.Team) error {
 	m.teams[team.Name] = team
+	return nil
+}
+
+func (m *Memory) SetMailVerified(user string) error {
+	t := true
+	item := m.password[user]
+	item.EmailVerified = &t
+	m.password[user] = item
 	return nil
 }

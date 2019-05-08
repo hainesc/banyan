@@ -1,10 +1,9 @@
-package smtp
+package mail
 
 import (
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net"
 	"net/smtp"
 )
@@ -60,10 +59,10 @@ func (s *Sender) Send(receivers []string, subject string, body []byte) error {
 		return err
 	}
 	defer client.Close()
-	host, _, _, := net.SplitHostPort(s.server)
+	host, _, _ := net.SplitHostPort(s.server)
 
 	// For "STARTTLS", add 'InsecureSkipVerify' configuration.
-	if ok, _ := c.Extension("STARTTLS"); ok {
+	if ok, _ := client.Extension("STARTTLS"); ok {
 		config := &tls.Config{
 			ServerName: host,
 			InsecureSkipVerify: true,
@@ -83,7 +82,7 @@ func (s *Sender) Send(receivers []string, subject string, body []byte) error {
 	if err = client.Mail(s.sender); err != nil {
 		return err
 	}
-	for _, receiver := range reveivers {
+	for _, receiver := range receivers {
 		if err = client.Rcpt(receiver); err != nil {
 			return err
 		}
@@ -94,7 +93,7 @@ func (s *Sender) Send(receivers []string, subject string, body []byte) error {
 		return err
 	}
 
-	message = "Subject: " + subject + "\r\n" +
+	message := "Subject: " + subject + "\r\n" +
 		"MIME-Version: 1.0\r\n" +
 		"Content-Type: text/plain; charset=\"utf-8\"\r\n" +
 		"Content-Transfer-Encoding: base64\r\n" +
@@ -102,7 +101,7 @@ func (s *Sender) Send(receivers []string, subject string, body []byte) error {
 	if _, err = writer.Write([]byte(message)); err != nil {
 		return err
 	}
-	if err = w.Close(); err != nil {
+	if err = writer.Close(); err != nil {
 		return err
 	}
 	return client.Quit()

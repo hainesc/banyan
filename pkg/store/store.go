@@ -10,4 +10,5 @@ type Store interface {
 	GetPassword(string) (*auth.Password, error)
 	GetTeams(string, string) ([]Team, error)
 	AddTeam(Team) error
+	SetMailVerified(string) error
 }
